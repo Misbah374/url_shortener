@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div>
+        <h2>Generate short URL</h2>
+        <input type="text" placeholder="Enter long website URL" id="longUrl">
+        <button id="shortenBtn">Shorten</button>
+        <p id="shortResult"></p>
+
+        <h2>Search shortened URL</h2>
+        <input type="text" placeholder="Enter short code" id="shortCode">
+        <button id="visitBtn">Visit</button>
+    </div>
+
+    <script>
+        const shortenBtn = document.getElementById("shortenBtn");
+        const visitBtn = document.getElementById("visitBtn");
+
+        // --- Generate short URL ---
+        shortenBtn.addEventListener("click", async () => {
+            const longUrl = document.getElementById("longUrl").value.trim();
+            const resultEl = document.getElementById("shortResult");
+
+            if (!longUrl) {
+                resultEl.textContent = "Please enter a valid URL.";
+                return;
+            }
+
+            try {
+                const response = await fetch(`/shortened?url=${encodeURIComponent(longUrl)}`);
+                if (!response.ok) throw new Error("Failed to shorten URL");
+                const data = await response.json();
+                resultEl.innerHTML = `Shortened URL: <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>`;
+            }catch (err) {
+                resultEl.textContent = "Error: " + err.message;
+            }
+        });
+
+        // --- Visit short URL ---
+        visitBtn.addEventListener("click", () => {
+            const code = document.getElementById("shortCode").value.trim();
+            if (!code) {
+                alert("Enter a short code first");
+                return;
+            }
+            // Open the short code (backend will redirect)
+            window.open(`http://localhost:3000/${code}`, "_blank");
+        });
+    </script>
+</body>
+</html>
