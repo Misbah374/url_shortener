@@ -4,6 +4,8 @@ const { randomBytes } = require("crypto");
 const path = require("path");
 const { URL } = require("url");
 
+const allData = null;
+
 const PORT = 3000;
 const DB_FILE = "urls.json";
 
@@ -22,8 +24,13 @@ const saveDB = (db) => {
 }
 
 // Generate a short random code
-const generateCode = () => {
-    return randomBytes(3).toString("hex");      // 6-char hex code
+const generateCode = (urlMap) => {
+    const cryptoCode = require("crypto");
+    let code;
+    do{
+        code = cryptoCode.randomBytes(3).toString("hex");      // 6-char hex code
+    }while(urlMap.hasOwnProperty(code));
+    return code;     
     // randomBytes(3): This is a function from Node.js's built-in crypto module. It generates a Buffer (a data structure for handling binary data) containing 3 cryptographically random bytes. A single byte can store 256 different values.
     // .toString("hex"): This method converts the Buffer of random bytes into a hexadecimal string. Since each byte can be represented by two hexadecimal characters (e.g., 00 to ff), 3 bytes are converted into a 6-character string. For example, if the 3 random bytes were [104, 255, 3], the resulting hexadecimal string would be 68ff03
 }
@@ -53,12 +60,30 @@ const server = http.createServer((req,res)=>{
     // shorten a url
     if(parsedUrl.pathname === "/shortened" && parsedUrl.searchParams.has("url")){
         const longUrl = parsedUrl.searchParams.get("url");
-        const code = generateCode();
-        urlMap[code] = longUrl;
+        const customCode = parsedUrl.searchParams.get("code");
+        let newCustomCode;
+        if (customCode) {
+            // Already exists -> return old short url
+            if(urlMap.hasOwnProperty(customCode)){
+                res.writeHead(400, {"content-type": "application/json"});
+                res.end(JSON.stringify({ error: "Already passed!" }));
+                return;
+            }
+            newCustomCode = customCode.trim();
+        }else{
+            newCustomCode = generateCode(urlMap);
+        }
+        const existingCode = Object.keys(urlMap).find(key => urlMap[key] === longUrl);
+        if(existingCode){
+            res.writeHead(200, {"content-type": "application/json"});
+            res.end(JSON.stringify({shortUrl: `http://${req.headers.host}/${existingCode}`}));
+            return;
+        }
+        urlMap[newCustomCode] = longUrl;
         saveDB(urlMap);
 
         res.writeHead(200, {"content-type": "application/json"});
-        res.end(JSON.stringify({shortUrl: `http://${req.headers.host}/${code}`}));
+        res.end(JSON.stringify({shortUrl: `http://${req.headers.host}/${newCustomCode}`}));
         return;
     }
 
@@ -67,6 +92,28 @@ const server = http.createServer((req,res)=>{
     if(code && urlMap[code]){
         res.writeHead(302, {location:urlMap[code]});
         res.end();
+        return;
+    }
+
+    // return all entries
+    if(parsedUrl.pathname === "/all"){
+        res.writeHead(200, {"content-type": "application/json"});
+        res.end(JSON.stringify(urlMap, null, 2));
+        return;
+    }
+
+    // delete an entry
+    if(req.method === "DELETE" && parsedUrl.pathname === "/delete" && parsedUrl.searchParams.has("code")){
+        const codeToDelete = parsedUrl.searchParams.get("code").trim();
+        if(!urlMap[codeToDelete]){
+            res.writeHead(404, {"content-type": "application/json"});
+            res.end(JSON.stringify({error: "Code not found"}));
+            return;
+        }
+        delete urlMap[codeToDelete];
+        saveDB(urlMap);
+        res.writeHead(200, {"content-type": "application/json"});
+        res.end(JSON.stringify({message: `Deleted successfully ${codeToDelete}`}));
         return;
     }
 
@@ -84,21 +131,43 @@ server.listen(PORT, () => {
 
 /*
 ---------- Algorithm ----------
-Is this correct algorithm: 
-step1: start
-step2: Read the url input
-step3: generate a random string of six letters 
-       https://en.wikipedia.org/wiki/Cryptographically_secure_pseudorandom_number_generator
-       O(N) + O(N) = O(2N)
-       for N = 3
-       O(3) + O(3) = O(6) => O(1)
-step4: Store generated url and original url in a json file as key:value pair 
-       O(N) because using json file as it will delete everything and re-write again
-step5: Whenever shortened url is called, redirect to value of that key from json file 
-       O(N)
-step6: end
+Step 1: Start
 
-Time complexity is O(N)
+Step 2: Read the long URL input from the user.
+        → O(1)
+
+Step 3: Check if user provided a custom short code.
+        (a) If custom code is provided:
+            - Check if the code already exists in the database (JSON object).
+              - O(1)
+            - If it exists → return error "Code already exists".
+            - Else → use this custom code.
+        (b) If no custom code is provided:
+            - Generate a random 6-character code using crypto.randomBytes(3).
+              - O(1)
+
+Step 4: Store the key–value pair (shortCode : longURL) in the JSON file.
+        - Since JSON file is re-written every time, saving causes file I/O.
+        → O(N), where N = total number of stored URLs
+
+Step 5: When user visits a short URL:
+        - Lookup shortCode in JSON object.
+        - If found → redirect to original long URL.
+        - Else → return 404 error.
+        - O(1)
+
+Step 6: For deleting a short URL:
+        - Find shortCode in JSON object (O(1))
+        - Delete that key and rewrite updated JSON file (O(N))
+        - Overall O(N)
+
+Step 7: End
+
+Average Time Complexities:
+Code generation / lookup / validation → O(1)
+File read-write operations             → O(N)
+
+Overall Complexity ≈ O(N)
 */
 
 // http://localhost:3000/shortened?url=https://www.google.com

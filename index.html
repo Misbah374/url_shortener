@@ -5,36 +5,72 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
+<style>
+    *{
+        margin: auto;
+    }
+    #container{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid black;
+        background-color: whitesmoke;
+        width: 400px;
+    }
+    input{
+        border: 1px solid #000000;
+        border-radius: 6px;
+    }
+    button{
+        border: 1px solid #000000;
+        border-radius: 6px;
+    }
+</style>
 <body>
-    <div>
+    <div id = "container">
         <h2>Generate short URL</h2>
         <input type="text" placeholder="Enter long website URL" id="longUrl">
+        <input type="text" placeholder="Custom short code (optional)" id="customCode">
         <button id="shortenBtn">Shorten</button>
         <p id="shortResult"></p>
 
         <h2>Search shortened URL</h2>
         <input type="text" placeholder="Enter short code" id="shortCode">
-        <button id="visitBtn">Visit</button>
+        <button id="visitBtn">Visit</button><br>
+
+        <h2>Delete shortened URL</h2>
+        <input type="text" placeholder="Enter short code to delete" id="deleteCode">
+        <button id="deleteBtn">Delete</button>
+        <p id="deleteResult"></p><br>
+
+        <button id="showEntriesBtn">Show All Entries</button>
+        <details id="entriesContainer"></details>
     </div>
 
     <script>
         const shortenBtn = document.getElementById("shortenBtn");
         const visitBtn = document.getElementById("visitBtn");
+        const showEntriesBtn = document.getElementById("showEntriesBtn");
+        const entriesContainer = document.getElementById("entriesContainer");
 
         // --- Generate short URL ---
         shortenBtn.addEventListener("click", async () => {
             const longUrl = document.getElementById("longUrl").value.trim();
+            const customCode = document.getElementById("customCode").value.trim();
             const resultEl = document.getElementById("shortResult");
-
             if (!longUrl) {
                 resultEl.textContent = "Please enter a valid URL.";
                 return;
             }
-
             try {
-                const response = await fetch(`/shortened?url=${encodeURIComponent(longUrl)}`);
-                if (!response.ok) throw new Error("Failed to shorten URL");
+                // Pass custom code if provided
+                const url = customCode
+                ? `/shortened?url=${encodeURIComponent(longUrl)}&code=${encodeURIComponent(customCode)}`
+                : `/shortened?url=${encodeURIComponent(longUrl)}`;
+                const response = await fetch(url);
                 const data = await response.json();
+                if (!response.ok) throw new Error("Failed to shorten URL");
                 resultEl.innerHTML = `Shortened URL: <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>`;
             }catch (err) {
                 resultEl.textContent = "Error: " + err.message;
@@ -51,6 +87,46 @@
             // Open the short code (backend will redirect)
             window.open(`http://localhost:3000/${code}`, "_blank");
         });
+
+        // --- Delete short URL ---
+        const deleteBtn = document.getElementById("deleteBtn");
+        const deleteResult = document.getElementById("deleteResult");
+
+        deleteBtn.addEventListener("click", async () => {
+            const code = document.getElementById("deleteCode").value.trim();
+            if (!code) {
+                deleteResult.textContent = "Please enter a code to delete.";
+                return;
+            }
+            try {
+                const response = await fetch(`/delete?code=${encodeURIComponent(code)}`,{
+                    method: "DELETE"
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Failed to delete URL");
+                deleteResult.textContent = data.message;
+            } catch (err) {
+                deleteResult.textContent = "Error: " + err.message;
+            }
+        });
+
+        // --- show all entries ---
+        showEntriesBtn.addEventListener("click", async () => {
+            try{
+                const response = await fetch("/all"); // ask backend for all entries
+                if(!response.ok) throw new Error("Failed to load entries");
+                const data = await response.json();
+                entriesContainer.innerHTML=`<summary>All Shortened URLs are: </summary>`;     // clear old content if any
+                Object.entries(data).forEach(([code, longUrl]) => {
+                    const p = document.createElement("table");
+                    p.innerHTML = `<tr><td>${code}:</td> <td><a href="${longUrl}" target="_blank">${longUrl}</a></td></tr>`;
+                    entriesContainer.appendChild(p);
+                });
+                //entriesContainer.open = true;  // auto-open <details>
+            }catch (erro){
+                entriesContainer.innerHTML = "Error: " + erro.message;
+            }
+        })
     </script>
 </body>
 </html>
